@@ -1,0 +1,87 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm i
+
+      # Устанавливаем секреты воркера из секретов GitHub репозитория
+      - name: Put secret TELEGRAM_BOT_TOKEN
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: secret put TELEGRAM_BOT_TOKEN --text ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: Put secret OPENAI_API_KEY
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: secret put OPENAI_API_KEY --text ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Put secret TELEGRAM_WEBHOOK_SECRET (optional)
+        if: ${{ secrets.TELEGRAM_WEBHOOK_SECRET != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: secret put TELEGRAM_WEBHOOK_SECRET --text ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+
+      - name: Put optional OPENAI_MODEL
+        if: ${{ secrets.OPENAI_MODEL != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: secret put OPENAI_MODEL --text ${{ secrets.OPENAI_MODEL }}
+
+      - name: Put optional SYSTEM_PROMPT
+        if: ${{ secrets.SYSTEM_PROMPT != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: secret put SYSTEM_PROMPT --text ${{ secrets.SYSTEM_PROMPT }}
+
+      - name: Put optional OPENAI_BASE_URL
+        if: ${{ secrets.OPENAI_BASE_URL != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: secret put OPENAI_BASE_URL --text ${{ secrets.OPENAI_BASE_URL }}
+
+      - name: Put optional TELEGRAM_API_BASE
+        if: ${{ secrets.TELEGRAM_API_BASE != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: secret put TELEGRAM_API_BASE --text ${{ secrets.TELEGRAM_API_BASE }}
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+
