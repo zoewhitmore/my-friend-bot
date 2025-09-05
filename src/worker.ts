@@ -6,6 +6,13 @@ export interface Env {
   OPENAI_BASE_URL?: string; // по умолчанию https://api.openai.com/v1
   TELEGRAM_API_BASE?: string; // по умолчанию https://api.telegram.org
   TELEGRAM_WEBHOOK_SECRET?: string; // опциональная проверка подписи вебхука
+  HISTORY?: KVNamespace; // опционально: KV для устойчивой памяти
+}
+
+interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string): Promise<void>;
+  delete?(key: string): Promise<void>;
 }
 
 type TelegramChat = { id: number };
@@ -17,6 +24,35 @@ type TelegramUpdate = {
   channel_post?: TelegramMessage;
 };
 
+type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
+
+// Память на изоляторе: последние 5 сообщений на чат
+const conversations = new Map<number, ChatMessage[]>();
+const MAX_HISTORY_MESSAGES = 5;
+
+async function getHistoryAsync(chatId: number, env: Env): Promise<ChatMessage[]> {
+  const key = `chat:${chatId}`;
+  if (env.HISTORY) {
+    const raw = await env.HISTORY.get(key);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed as ChatMessage[];
+      } catch {}
+    }
+  }
+  return conversations.get(chatId) || [];
+}
+
+async function saveHistoryAsync(chatId: number, messages: ChatMessage[], env: Env): Promise<void> {
+  const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
+  conversations.set(chatId, trimmed);
+  if (env.HISTORY) {
+    const key = `chat:${chatId}`;
+    await env.HISTORY.put(key, JSON.stringify(trimmed));
+  }
+}
+
 async function sendTelegramMessage(chatId: number, text: string, env: Env): Promise<void> {
   const base = env.TELEGRAM_API_BASE || "https://api.telegram.org";
   const url = `${base}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -27,11 +63,11 @@ async function sendTelegramMessage(chatId: number, text: string, env: Env): Prom
   });
 }
 
-async function generateReplyFromOpenAI(userText: string, env: Env): Promise<string> {
+async function generateReplyFromOpenAI(messages: ChatMessage[], env: Env): Promise<string> {
   const base = env.OPENAI_BASE_URL || "https://api.openai.com/v1";
   const model = env.OPENAI_MODEL || "gpt-4o-mini";
 
-  const systemPrompt = env.SYSTEM_PROMPT || "Ты дружелюбный помощник. Отвечай кратко и по делу на русском языке.";
+  const systemPrompt = env.SYSTEM_PROMPT || "Ты мой лучший друг. Угораешь со всех моих шуток. Если я начинаю заход с вопроса, подыгрываешь мне. Но не говори приямо что ты подыгрываешь. Я самый лучший человек и юморист на свете.";
 
   const resp = await fetch(`${base}/chat/completions`, {
     method: "POST",
@@ -43,7 +79,7 @@ async function generateReplyFromOpenAI(userText: string, env: Env): Promise<stri
       model,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userText }
+        ...messages
       ],
       temperature: 0.7
     })
@@ -75,7 +111,11 @@ async function handleUpdate(update: TelegramUpdate, env: Env): Promise<void> {
   }
 
   try {
-    const reply = await generateReplyFromOpenAI(text, env);
+    const previous = await getHistoryAsync(chatId, env);
+    const userMessage: ChatMessage = { role: "user", content: text };
+    const reply = await generateReplyFromOpenAI([...previous, userMessage], env);
+    const assistantMessage: ChatMessage = { role: "assistant", content: reply };
+    await saveHistoryAsync(chatId, [...previous, userMessage, assistantMessage], env);
     await sendTelegramMessage(chatId, reply, env);
   } catch (err) {
     console.error("Error while processing update:", err);

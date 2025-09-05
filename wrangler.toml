@@ -5,4 +5,12 @@ workers_dev = true
 
 # account_id берётся из переменной окружения или передаётся флагом CLI в CI.
 
+# Опциональная привязка KV для устойчивого хранения истории
+# Перед деплоем создайте KV и свяжите его:
+# wrangler kv:namespace create HISTORY
+# затем добавьте binding ниже (или используйте через CLI/Action)
+# [[kv_namespaces]]
+# binding = "HISTORY"
+# id = "<KV_NAMESPACE_ID>"
+
 

@@ -5,6 +5,7 @@
 ### Как это работает
 - Telegram отправляет апдейты (сообщения) на маршрут `/webhook` вашего воркера
 - Воркер вызывает OpenAI Chat Completions и возвращает ответ в чат через `sendMessage`
+ - История чата: по умолчанию хранится в памяти воркера (на изоляторе) и сохраняет последние 5 сообщений. Для устойчивого хранения можно подключить Cloudflare KV (рекомендуется).
 
 ### Развёртывание
 Автодеплой настроен через GitHub Actions: пуш в ветку `main` = деплой на Cloudflare Workers.
@@ -29,6 +30,9 @@
 - `OPENAI_BASE_URL` — базовый URL OpenAI API (если используете совместимый провайдер)
 - `TELEGRAM_API_BASE` — базовый URL Telegram API (по умолчанию `https://api.telegram.org`)
 
+#### 2.1) KV для истории — создаётся автоматически
+Workflow сам найдёт или создаст KV namespace с заголовком `telegram-openai-worker-HISTORY`, сгенерирует временный `wrangler.generated.toml` с привязкой `[[kv_namespaces]] binding = "HISTORY"`, и выполнит деплой с этим конфигом. Ничего вручную делать не нужно.
+
 #### 3) Настройка вебхука в Telegram
 После первого деплоя получите URL воркера в Cloudflare Dashboard или из лога job. Пример: `https://telegram-openai-worker.username.workers.dev`
 
@@ -36,11 +40,10 @@
 
 ```bash
 curl -X POST \
-  "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  "https://api.telegram.org/bot8346690670:AAGPGlYefnbh8Wedkeq7LtLZTz1GOm6G88w/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://<ВАШ_ДОМЕН>/webhook",
-    "secret_token": "<TELEGRAM_WEBHOOK_SECRET_если_используете>"
+    "url": "https://telegram-openai-worker.zoewhitmoree.workers.dev/webhook",
   }'
 ```
 
@@ -62,6 +65,7 @@ npx wrangler dev
 
 ### Замечания по лимитам и ошибкам
 - В случае ошибки обращения к OpenAI воркер вернёт пользователю краткое сообщение об ошибке и залогирует детали.
+ - Память изолята не гарантирована при масштабировании/рестартах. С KV история станет устойчивой (но с eventual consistency), с Durable Objects — строго последовательной (можно добавить по запросу).
 
 ### Стек
 - Cloudflare Workers
